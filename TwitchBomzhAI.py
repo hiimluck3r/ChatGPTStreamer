@@ -60,7 +60,7 @@ def training_save(messages, path):
 # Сохраняем субтитры в .txt для ОБС
 def subs_save(content_input, response):
     with open('subs.txt', encoding='utf-8', mode='w') as f_subs:  # в этот файл мы записываем сабы, выводимые в обс
-        f_subs.writelines(content_input + '?' + '\n' + response)
+        f_subs.writelines(f'{content_input}?' + '\n' + response)
 
 
 # Ищет сообщения в чате Твича, в которых есть слово Комуто и само сообщение не больше 150 символов, включая пробелы
@@ -69,11 +69,8 @@ def check_comment():
     prompt = data[-1]['message']
     user_name = data[-1]['display-name']
     prompt_lower = prompt.lower()
-    if 'комуто' in prompt_lower:
-        if len(prompt) <= 150:
-            return prompt, user_name
-        else:
-            return '', ''
+    if 'комуто' in prompt_lower and len(prompt) <= 150:
+        return prompt, user_name
     else:
         return '', ''
 
@@ -89,9 +86,7 @@ def text_normalizer(prompt):
         if prompt_char[i].isdigit():
             number = number + prompt_char[i]
         else:
-            if number == '':
-                pass
-            else:
+            if number != '':
                 prompt = prompt.replace(number, num2words(number, lang='ru'))
             number = ''
         i += 1
@@ -110,7 +105,7 @@ def main(content_input, messages, banwords, path):
     #print('Response: ' + response) #опционально
     normalized_content_input = text_normalizer(content_input)
     normalized_response = text_normalizer(response)
-    generate_voice(normalized_content_input + '? ' + normalized_response + ' ь')  # произносим то, что ввёл пользователь, а также ответ, который дала нейронка
+    generate_voice(f'{normalized_content_input}? {normalized_response} ь')
     time.sleep(3)
     with open('subs.txt', encoding='utf-8', mode='w'):
         print('Subs cleared')
@@ -127,48 +122,48 @@ def debug_input():
 def body():
     content_input, user_name = check_comment()
     #content_input, user_name = debug_input()
-    path = 'users_data/'+user_name+'_data.json'
-    if content_input != '':
-        if os.path.isfile(path):
-            try:
-                with open (path, encoding='utf-8', mode='r') as f_userData:
-                    messages = json.load(f_userData)
-                print('Generating text for', user_name)
-                main(content_input, messages, banwords, path)
-            except openai.error.InvalidRequestError as overflow:
-                with open (path, encoding='utf-8', mode='r') as f_userData:
-                    messages = json.load(f_userData)
-                print('Data overflow: Generating backup')
-                with open('users_data/backup_'+user_name+'_data.json', encoding='utf-8', mode='w') as f_backup:
-                    f_backup.writelines(json.dumps(messages, ensure_ascii=False))
-                print('Writing new user_data...')
-                with open('backup_trainingdata_messagelist.json', encoding='utf-8', mode='r') as f_trainingData:
-                    basic_instructions = json.load(f_trainingData)  # Вытаскиваем заготовленный обученный базовый датасет.
-                    basic_instructions.append(messages[-4])
-                    basic_instructions.append(messages[-3])
-                    basic_instructions.append(messages[-2])
-                    basic_instructions.append(messages[-1])
-                with open(path, encoding='utf-8', mode='w') as f_newUserData:
-                    f_newUserData.writelines(json.dumps(basic_instructions, ensure_ascii=False))
-                with open (path, encoding='utf-8', mode='r') as f_userDataNew:
-                    messages = json.load(f_userDataNew)
-                print('Generating text for', user_name)
-                main(content_input, messages, banwords, path)
-            except Exception as e:
-                print('!!!!!!!!WARNING!!!!!!!!')
-                print(e)
-                body()
-        else:
-            print('Generating file and giving it basic instructions')
-            with open(path, encoding='utf-8', mode='w') as f_firstData:
-                with open('backup_trainingdata_messagelist.json', encoding='utf-8', mode='r') as f_trainingData:
-                    basic_instructions = json.load(f_trainingData)  # Вытаскиваем заготовленный обученный базовый датасет.
-                f_firstData.writelines(json.dumps(basic_instructions, ensure_ascii=False))
-            messages = basic_instructions
+    path = f'users_data/{user_name}_data.json'
+    if content_input == '':
+        print('Blank message accepted. Ignoring')
+        body()
+
+    elif os.path.isfile(path):
+        try:
+            with open (path, encoding='utf-8', mode='r') as f_userData:
+                messages = json.load(f_userData)
+            print('Generating text for', user_name)
             main(content_input, messages, banwords, path)
+        except openai.error.InvalidRequestError as overflow:
+            with open (path, encoding='utf-8', mode='r') as f_userData:
+                messages = json.load(f_userData)
+            print('Data overflow: Generating backup')
+            with open(f'users_data/backup_{user_name}_data.json', encoding='utf-8', mode='w') as f_backup:
+                f_backup.writelines(json.dumps(messages, ensure_ascii=False))
+            print('Writing new user_data...')
+            with open('backup_trainingdata_messagelist.json', encoding='utf-8', mode='r') as f_trainingData:
+                basic_instructions = json.load(f_trainingData)  # Вытаскиваем заготовленный обученный базовый датасет.
+                basic_instructions.append(messages[-4])
+                basic_instructions.append(messages[-3])
+                basic_instructions.append(messages[-2])
+                basic_instructions.append(messages[-1])
+            with open(path, encoding='utf-8', mode='w') as f_newUserData:
+                f_newUserData.writelines(json.dumps(basic_instructions, ensure_ascii=False))
+            with open (path, encoding='utf-8', mode='r') as f_userDataNew:
+                messages = json.load(f_userDataNew)
+            print('Generating text for', user_name)
+            main(content_input, messages, banwords, path)
+        except Exception as e:
+            print('!!!!!!!!WARNING!!!!!!!!')
+            print(e)
             body()
     else:
-        print('Blank message accepted. Ignoring')
+        print('Generating file and giving it basic instructions')
+        with open(path, encoding='utf-8', mode='w') as f_firstData:
+            with open('backup_trainingdata_messagelist.json', encoding='utf-8', mode='r') as f_trainingData:
+                basic_instructions = json.load(f_trainingData)  # Вытаскиваем заготовленный обученный базовый датасет.
+            f_firstData.writelines(json.dumps(basic_instructions, ensure_ascii=False))
+        messages = basic_instructions
+        main(content_input, messages, banwords, path)
         body()
 
 while True:
